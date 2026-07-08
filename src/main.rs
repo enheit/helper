@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent};
 
-use app::{App, Screen};
+use app::{App, ModeKind, Screen};
 
 fn main() -> io::Result<()> {
     let mut terminal = ratatui::init();
@@ -29,30 +29,38 @@ fn main() -> io::Result<()> {
 
 fn handle_key(app: &mut App, key: KeyEvent) {
     match app.screen {
-        Screen::List => match key.code {
-            KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
-            KeyCode::Left => app.prev_tab(),
-            KeyCode::Right => app.next_tab(),
-            KeyCode::Char('j') | KeyCode::Down if app.tab == 0 => app.select_next(),
-            KeyCode::Char('k') | KeyCode::Up if app.tab == 0 => app.select_prev(),
-            KeyCode::Char('l') if app.tab == 0 => app.open_selected_detail(),
-            KeyCode::Char('a') if app.tab == 0 => app.open_add_form(),
-            _ => {}
+        Screen::List => match app.mode_kind() {
+            ModeKind::Browse => match key.code {
+                KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
+                KeyCode::Left => app.prev_tab(),
+                KeyCode::Right => app.next_tab(),
+                KeyCode::Char('j') | KeyCode::Down if app.tab == 0 => app.select_next(),
+                KeyCode::Char('k') | KeyCode::Up if app.tab == 0 => app.select_prev(),
+                KeyCode::Char('l') if app.tab == 0 => app.open_detail(),
+                KeyCode::Char('a') if app.tab == 0 => app.start_quick_add(),
+                KeyCode::Char('e') if app.tab == 0 => app.start_edit(),
+                _ => {}
+            },
+            ModeKind::QuickAdd => match key.code {
+                KeyCode::Enter => app.confirm_quick_add(),
+                KeyCode::Esc => app.cancel_mode(),
+                KeyCode::Backspace => app.quick_add_backspace(),
+                KeyCode::Char(c) => app.quick_add_push(c),
+                _ => {}
+            },
+            ModeKind::Edit => match key.code {
+                KeyCode::Enter => app.confirm_edit(),
+                KeyCode::Esc => app.cancel_mode(),
+                KeyCode::Tab | KeyCode::Down => app.edit_next_field(),
+                KeyCode::BackTab | KeyCode::Up => app.edit_prev_field(),
+                KeyCode::Backspace => app.edit_backspace(),
+                KeyCode::Char(c) => app.edit_push_char(c),
+                _ => {}
+            },
         },
         Screen::Detail => match key.code {
             KeyCode::Char('q') => app.should_quit = true,
             KeyCode::Char('h') | KeyCode::Esc => app.back_to_list(),
-            _ => {}
-        },
-        Screen::Add => match key.code {
-            KeyCode::Esc => app.cancel_add_form(),
-            KeyCode::Tab | KeyCode::Down => app.form_next_field(),
-            KeyCode::BackTab | KeyCode::Up => app.form_prev_field(),
-            KeyCode::Enter => app.submit_form(),
-            KeyCode::Backspace => {
-                app.form.fields[app.form.focused].pop();
-            }
-            KeyCode::Char(c) => app.form.fields[app.form.focused].push(c),
             _ => {}
         },
     }

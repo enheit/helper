@@ -4,23 +4,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Tabs};
 use ratatui::Frame;
 
-use chrono::Duration;
-
-use crate::app::{relative_time, App, Screen, TABS};
-
-fn format_lead(lead: Duration) -> String {
-    let secs = lead.num_seconds();
-    if secs <= 0 {
-        return "0m".into();
-    }
-    if secs % 86400 == 0 {
-        format!("{}d", secs / 86400)
-    } else if secs % 3600 == 0 {
-        format!("{}h", secs / 3600)
-    } else {
-        format!("{}m", secs / 60)
-    }
-}
+use crate::app::{format_lead, relative_time, App, Screen, TABS};
 
 pub fn draw(frame: &mut Frame, app: &App) {
     let [content, tab_bar] =
@@ -28,6 +12,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
     match app.screen {
         Screen::List => draw_content(frame, app, content),
+        Screen::Detail => draw_detail(frame, app, content),
         Screen::Add => draw_add_form(frame, app, content),
     }
     draw_tab_bar(frame, app, tab_bar);
@@ -49,23 +34,24 @@ fn draw_reminders(frame: &mut Frame, app: &App, area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
         .title("Reminders")
-        .title_bottom(Line::from(" a: add  q: quit ").right_aligned());
+        .title_bottom(Line::from(" j/k: move  l: open  a: add  q: quit ").right_aligned());
 
     let items: Vec<ListItem> = app
         .sorted_reminders()
         .into_iter()
-        .map(|r| {
+        .enumerate()
+        .map(|(i, r)| {
+            let selected = i == app.selected;
+            let style = if selected {
+                Style::default().bg(Color::Cyan).fg(Color::Black)
+            } else {
+                Style::default()
+            };
             let line = Line::from(vec![
-                Span::styled(format!("{:<24}", r.name), Style::default().add_modifier(Modifier::BOLD)),
-                Span::styled(relative_time(r.remind_at), Style::default().fg(Color::Cyan)),
+                Span::styled(format!("{:<24}", r.name), style.add_modifier(Modifier::BOLD)),
+                Span::styled(relative_time(r.remind_at), style.fg(if selected { Color::Black } else { Color::Cyan })),
             ]);
-            ListItem::new(vec![
-                line,
-                Line::from(Span::styled(
-                    format!("  {}  (starts reminding {} before)", r.description, format_lead(r.lead)),
-                    Style::default().fg(Color::DarkGray),
-                )),
-            ])
+            ListItem::new(line)
         })
         .collect();
 
@@ -76,6 +62,31 @@ fn draw_reminders(frame: &mut Frame, app: &App, area: Rect) {
     };
 
     frame.render_widget(list, area);
+}
+
+fn draw_detail(frame: &mut Frame, app: &App, area: Rect) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title("Reminder")
+        .title_bottom(Line::from(" h: back  q: quit ").right_aligned());
+
+    let Some(reminder) = app.selected_reminder() else {
+        frame.render_widget(Paragraph::new("No reminder selected").block(block), area);
+        return;
+    };
+
+    let lines = vec![
+        Line::from(Span::styled(reminder.name.clone(), Style::default().add_modifier(Modifier::BOLD))),
+        Line::from(""),
+        Line::from(format!(
+            "Description: {}",
+            reminder.description.as_deref().unwrap_or("no description")
+        )),
+        Line::from(format!("When: {}", relative_time(reminder.remind_at))),
+        Line::from(format!("Remind before: {}", format_lead(reminder.lead))),
+    ];
+
+    frame.render_widget(Paragraph::new(lines).block(block), area);
 }
 
 fn draw_add_form(frame: &mut Frame, app: &App, area: Rect) {

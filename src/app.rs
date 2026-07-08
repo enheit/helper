@@ -4,13 +4,14 @@ pub const TABS: [&str; 2] = ["Reminders", "Todo"];
 
 pub struct Reminder {
     pub name: String,
-    pub description: String,
-    pub remind_at: DateTime<Local>,
-    pub lead: Duration,
+    pub description: Option<String>,
+    pub remind_at: Option<DateTime<Local>>,
+    pub lead: Option<Duration>,
 }
 
 pub enum Screen {
     List,
+    Detail,
     Add,
 }
 
@@ -24,9 +25,9 @@ pub struct FormState {
 impl FormState {
     pub const LABELS: [&'static str; 4] = [
         "Name",
-        "Description",
-        "When (YYYY-MM-DD HH:MM)",
-        "Remind before (e.g. 2d, 12h, 30m)",
+        "Description (optional)",
+        "When (optional, YYYY-MM-DD HH:MM)",
+        "Remind before (optional, e.g. 2d, 12h, 30m)",
     ];
 
     fn clear(&mut self) {
@@ -39,6 +40,7 @@ impl FormState {
 pub struct App {
     pub tab: usize,
     pub reminders: Vec<Reminder>,
+    pub selected: usize,
     pub screen: Screen,
     pub form: FormState,
     pub should_quit: bool,
@@ -51,26 +53,33 @@ impl App {
         let reminders = vec![
             Reminder {
                 name: "Stand up".into(),
-                description: "Daily sync with the team".into(),
-                remind_at: now + Duration::seconds(35),
-                lead: Duration::minutes(5),
+                description: Some("Daily sync with the team".into()),
+                remind_at: Some(now + Duration::seconds(35)),
+                lead: Some(Duration::minutes(5)),
             },
             Reminder {
                 name: "Dentist".into(),
-                description: "Checkup appointment".into(),
-                remind_at: now + Duration::hours(2),
-                lead: Duration::hours(1),
+                description: Some("Checkup appointment".into()),
+                remind_at: Some(now + Duration::hours(2)),
+                lead: Some(Duration::hours(1)),
             },
             Reminder {
                 name: "Pay rent".into(),
-                description: "Bank transfer due".into(),
-                remind_at: now + Duration::days(3),
-                lead: Duration::days(2),
+                description: Some("Bank transfer due".into()),
+                remind_at: Some(now + Duration::days(3)),
+                lead: Some(Duration::days(2)),
+            },
+            Reminder {
+                name: "Quick note".into(),
+                description: None,
+                remind_at: None,
+                lead: None,
             },
         ];
         Self {
             tab: 0,
             reminders,
+            selected: 0,
             screen: Screen::List,
             form: FormState::default(),
             should_quit: false,
@@ -79,8 +88,33 @@ impl App {
 
     pub fn sorted_reminders(&self) -> Vec<&Reminder> {
         let mut items: Vec<&Reminder> = self.reminders.iter().collect();
-        items.sort_by_key(|r| r.remind_at);
+        // no-date reminders sort last
+        items.sort_by_key(|r| r.remind_at.unwrap_or(DateTime::<Local>::MAX_UTC.into()));
         items
+    }
+
+    pub fn select_next(&mut self) {
+        if !self.reminders.is_empty() {
+            self.selected = (self.selected + 1).min(self.reminders.len() - 1);
+        }
+    }
+
+    pub fn select_prev(&mut self) {
+        self.selected = self.selected.saturating_sub(1);
+    }
+
+    pub fn open_selected_detail(&mut self) {
+        if !self.reminders.is_empty() {
+            self.screen = Screen::Detail;
+        }
+    }
+
+    pub fn selected_reminder(&self) -> Option<&Reminder> {
+        self.sorted_reminders().into_iter().nth(self.selected)
+    }
+
+    pub fn back_to_list(&mut self) {
+        self.screen = Screen::List;
     }
 
     pub fn next_tab(&mut self) {
@@ -112,7 +146,7 @@ impl App {
 
     pub fn submit_form(&mut self) {
         let name = self.form.fields[0].trim().to_string();
-        let description = self.form.fields[1].trim().to_string();
+        let description = non_empty(&self.form.fields[1]);
         let when_raw = self.form.fields[2].trim();
         let lead_raw = self.form.fields[3].trim();
 
@@ -120,15 +154,24 @@ impl App {
             self.form.error = Some("Name can't be empty".into());
             return;
         }
-        let Some(remind_at) = parse_datetime(when_raw) else {
-            self.form.error = Some("Couldn't parse date/time, use YYYY-MM-DD HH:MM".into());
-            return;
+
+        let remind_at = if when_raw.is_empty() {
+            None
+        } else {
+            match parse_datetime(when_raw) {
+                Some(dt) => Some(dt),
+                None => {
+                    self.form.error = Some("Couldn't parse date/time, use YYYY-MM-DD HH:MM".into());
+                    return;
+                }
+            }
         };
+
         let lead = if lead_raw.is_empty() {
-            Duration::zero()
+            None
         } else {
             match parse_lead(lead_raw) {
-                Some(d) => d,
+                Some(d) => Some(d),
                 None => {
                     self.form.error = Some("Couldn't parse lead time, use e.g. 2d, 12h, 30m".into());
                     return;
@@ -143,6 +186,15 @@ impl App {
             lead,
         });
         self.cancel_add_form();
+    }
+}
+
+fn non_empty(s: &str) -> Option<String> {
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
     }
 }
 
@@ -170,7 +222,11 @@ fn parse_lead(s: &str) -> Option<Duration> {
     }
 }
 
-pub fn relative_time(target: DateTime<Local>) -> String {
+pub fn relative_time(target: Option<DateTime<Local>>) -> String {
+    let Some(target) = target else {
+        return "no date set".to_string();
+    };
+
     let diff = target - Local::now();
     let past = diff < Duration::zero();
     let secs = diff.num_seconds().abs();
@@ -199,5 +255,21 @@ fn pluralize(n: i64, singular: &str, plural: &str) -> String {
         format!("1 {singular}")
     } else {
         format!("{n} {plural}")
+    }
+}
+
+pub fn format_lead(lead: Option<Duration>) -> String {
+    let Some(lead) = lead else {
+        return "no lead time set".to_string();
+    };
+    let secs = lead.num_seconds();
+    if secs <= 0 {
+        "0m".into()
+    } else if secs % 86400 == 0 {
+        format!("{}d", secs / 86400)
+    } else if secs % 3600 == 0 {
+        format!("{}h", secs / 3600)
+    } else {
+        format!("{}m", secs / 60)
     }
 }

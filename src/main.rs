@@ -31,9 +31,17 @@ fn handle_key(app: &mut App, key: KeyEvent) {
     match app.screen {
         Screen::List => match key.code {
             KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
-            KeyCode::Left | KeyCode::Char('h') => app.prev_tab(),
-            KeyCode::Right | KeyCode::Char('l') => app.next_tab(),
+            KeyCode::Left => app.prev_tab(),
+            KeyCode::Right => app.next_tab(),
+            KeyCode::Char('j') | KeyCode::Down if app.tab == 0 => app.select_next(),
+            KeyCode::Char('k') | KeyCode::Up if app.tab == 0 => app.select_prev(),
+            KeyCode::Char('l') if app.tab == 0 => app.open_selected_detail(),
             KeyCode::Char('a') if app.tab == 0 => app.open_add_form(),
+            _ => {}
+        },
+        Screen::Detail => match key.code {
+            KeyCode::Char('q') => app.should_quit = true,
+            KeyCode::Char('h') | KeyCode::Esc => app.back_to_list(),
             _ => {}
         },
         Screen::Add => match key.code {

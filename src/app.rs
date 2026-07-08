@@ -23,12 +23,14 @@ pub enum Mode {
         focus: usize,
         buffer: [String; 4], // name, description, when, remind before
     },
+    ConfirmDelete(u32),
 }
 
 pub enum ModeKind {
     Browse,
     QuickAdd,
     Edit,
+    ConfirmDelete,
 }
 
 pub struct App {
@@ -93,7 +95,12 @@ impl App {
             Mode::Browse => ModeKind::Browse,
             Mode::QuickAdd(_) => ModeKind::QuickAdd,
             Mode::Edit { .. } => ModeKind::Edit,
+            Mode::ConfirmDelete(_) => ModeKind::ConfirmDelete,
         }
+    }
+
+    pub fn find_by_id(&self, id: u32) -> Option<&Reminder> {
+        self.reminders.iter().find(|r| r.id == id)
     }
 
     pub fn sorted_reminders(&self) -> Vec<&Reminder> {
@@ -138,6 +145,24 @@ impl App {
     pub fn cancel_mode(&mut self) {
         self.mode = Mode::Browse;
         self.edit_error = None;
+    }
+
+    pub fn start_delete_confirm(&mut self) {
+        if matches!(self.mode, Mode::Browse) {
+            if let Some(r) = self.selected_reminder() {
+                self.mode = Mode::ConfirmDelete(r.id);
+            }
+        }
+    }
+
+    pub fn confirm_delete(&mut self) {
+        if let Mode::ConfirmDelete(id) = self.mode {
+            self.reminders.retain(|r| r.id != id);
+            if self.selected >= self.reminders.len() {
+                self.selected = self.reminders.len().saturating_sub(1);
+            }
+        }
+        self.mode = Mode::Browse;
     }
 
     pub fn start_quick_add(&mut self) {

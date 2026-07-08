@@ -39,6 +39,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
                 KeyCode::Char('l') if app.tab == 0 => app.open_detail(),
                 KeyCode::Char('a') if app.tab == 0 => app.start_quick_add(),
                 KeyCode::Char('e') if app.tab == 0 => app.start_edit(),
+                KeyCode::Char('d') if app.tab == 0 => app.start_delete_confirm(),
                 _ => {}
             },
             ModeKind::QuickAdd => match key.code {
@@ -56,6 +57,10 @@ fn handle_key(app: &mut App, key: KeyEvent) {
                 KeyCode::Backspace => app.edit_backspace(),
                 KeyCode::Char(c) => app.edit_push_char(c),
                 _ => {}
+            },
+            ModeKind::ConfirmDelete => match key.code {
+                KeyCode::Char('y') | KeyCode::Char('Y') => app.confirm_delete(),
+                _ => app.cancel_mode(),
             },
         },
         Screen::Detail => match key.code {

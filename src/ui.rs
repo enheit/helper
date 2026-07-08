@@ -7,14 +7,31 @@ use ratatui::Frame;
 use crate::app::{format_datetime, format_lead, relative_time, App, Mode, Screen, TABS};
 
 pub fn draw(frame: &mut Frame, app: &App) {
-    let [content, tab_bar] =
-        Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(frame.area());
+    let prompt_height = if matches!(app.mode, Mode::ConfirmDelete(_)) { 1 } else { 0 };
+    let [content, prompt, tab_bar] = Layout::vertical([
+        Constraint::Min(0),
+        Constraint::Length(prompt_height),
+        Constraint::Length(1),
+    ])
+    .areas(frame.area());
 
     match app.screen {
         Screen::List => draw_content(frame, app, content),
         Screen::Detail => draw_detail(frame, app, content),
     }
+    if let Mode::ConfirmDelete(id) = app.mode {
+        draw_delete_prompt(frame, app, id, prompt);
+    }
     draw_tab_bar(frame, app, tab_bar);
+}
+
+fn draw_delete_prompt(frame: &mut Frame, app: &App, id: u32, area: Rect) {
+    let name = app.find_by_id(id).map(|r| r.name.as_str()).unwrap_or("");
+    let text = format!("Remove '{name}'? (y/N)");
+    frame.render_widget(
+        Paragraph::new(text).style(Style::default().fg(Color::Red)),
+        area,
+    );
 }
 
 fn draw_content(frame: &mut Frame, app: &App, area: Rect) {
